@@ -21,11 +21,11 @@ app = proc do |_env|
     <!DOCTYPE html>
     <html>
     <head>
-      <title>Rouge Lexer Preview: #{lexer.class.tag}</title>
+      <title>Rouge Lexer Preview: #{lexer.tag}</title>
       <style>#{theme_css} body { font-family: sans-serif; margin: 2em; }</style>
     </head>
     <body>
-      <h1>#{lexer.class.title} Lexer Preview</h1>
+      <h1>#{lexer.title} Lexer Preview</h1>
       <h2>Demo</h2>
       <div class="highlight"><pre>#{highlighted_demo}</pre></div>
       <h2>Visual Sample</h2>
@@ -34,7 +34,7 @@ app = proc do |_env|
     </html>
   HTML
 
-  ['200', { 'content-type' => 'text/html' }, [body]]
+  [200, { 'content-type' => 'text/html' }, [body]]
 end
 
 run app
