@@ -37,7 +37,7 @@ rule ExampleRule {
 ```
 ````
 
-## Jekyll / GitHub Pages
+### Jekyll / GitHub Pages
 
 Add the gem to your site's `Gemfile` inside the `:jekyll_plugins` group:
 
@@ -48,6 +48,12 @@ end
 ```
 
 Run `bundle install`, then use ` ```yara ` fences in your posts and pages. Jekyll will pick up the lexer automatically via Rouge's plugin discovery.
+
+### Colors
+
+The lexer tells Rouge how to identify tokens. Rouge wraps each token in a `span` tag
+with a `class` related to that token type. If you want to change how the tokens are
+highlighted, change themes or add custom CSS.
 
 ## Development
 
