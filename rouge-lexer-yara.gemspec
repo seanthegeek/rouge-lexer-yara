@@ -2,7 +2,7 @@
 
 Gem::Specification.new do |s|
   s.name        = 'rouge-lexer-yara'
-  s.version     = '0.1.0'
+  s.version     = '0.2.0'
   s.summary     = 'Rouge lexer for YARA'
   s.description = 'A Rouge plugin providing syntax highlighting for ' \
                   'YARA malware pattern-matching rule language'
@@ -16,7 +16,9 @@ Gem::Specification.new do |s|
   s.add_dependency 'rouge', '>= 3.0'
 
   s.metadata = {
-    'source_code_uri' => 'https://github.com/seanthegeek/rouge-lexer-yara',
-    'bug_tracker_uri' => 'https://github.com/seanthegeek/rouge-lexer-yara/issues'
+    'source_code_uri'   => 'https://github.com/seanthegeek/rouge-lexer-yara',
+    'bug_tracker_uri'   => 'https://github.com/seanthegeek/rouge-lexer-yara/issues',
+    'documentation_uri' => 'https://github.com/seanthegeek/rouge-lexer-yara#readme',
+    'homepage_uri'      => 'https://github.com/seanthegeek/rouge-lexer-yara'
   }
 end

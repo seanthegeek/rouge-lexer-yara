@@ -1,9 +1,10 @@
 /*
     YARA Visual Sample
-    Covers a wide range of YARA syntax elements.
+    Comprehensive coverage of YARA syntax for Rouge lexer testing.
+    All rules use realistic names and patterns from actual malware research.
 */
 
-// Import statements
+// ── Imports and includes ─────────────────────────────────────────────────────
 import "pe"
 import "elf"
 import "hash"
@@ -12,365 +13,620 @@ import "dotnet"
 import "time"
 import "console"
 import "string"
+import "cuckoo"
+import "magic"
+import "lnk"
 
-// Include statement
-include "other_rules.yar"
-include "./includes/more_rules.yar"
+include "hunting/base_rules.yar"
 
-// Simple rule with no strings
+// ── Keyword::Constant: true / false ──────────────────────────────────────────
 rule AlwaysFalse
 {
     condition:
         false
 }
 
-// Basic rule with tags and metadata
-rule BasicExample : Tag1 Tag2 ExampleTag
+// ── Basic rule with tags and metadata ────────────────────────────────────────
+rule Mirai_Botnet_Loader : botnet iot mirai
 {
     meta:
-        description = "A basic YARA rule example"
-        author = "Rouge Lexer Test"
+        description = "Detects Mirai botnet loader binary"
+        author = "Threat Intelligence Team"
         date = "2024-01-15"
-        version = 1
-        is_test = true
+        md5 = "d41d8cd98f00b204e9800998ecf8427e"
+        version = 2
+        in_the_wild = true
+        score = 85
+
+    strings:
+        $str_telnet  = "SCANNER ON" ascii fullword
+        $str_killer  = "/bin/busybox MIRAI" ascii
+        $str_table   = "LZRD" wide ascii nocase
+        $xor_cfg     = "CNIG" xor(0x22-0x44)
+        $b64_payload = "TVqQAAMAAAAEAAAA" base64
+        $b64w_marker = "loader" base64wide
+
+    condition:
+        filesize < 1MB and
+        uint32(0) == 0x464C457F and
+        3 of ($str*) and
+        ($xor_cfg or $b64_payload or $b64w_marker)
+}
+
+// ── Hex strings: wildcards, jumps, alternatives, negation ────────────────────
+rule Cobalt_Strike_Beacon : apt backdoor cobaltstrike
+{
+    meta:
+        description = "Detects Cobalt Strike beacon shellcode and loader"
+        author = "Detection Engineering"
+        reference = "https://www.cobaltstrike.com/help-beacon"
+        score = 95
+
+    strings:
+        // MZ header
+        $mz = { 4D 5A }
+
+        // Beacon config watermark (exact)
+        $cfg_magic = { 00 01 BE EF 00 01 BE EF }
+
+        // Reflective loader stub with wildcards
+        $refl_loader = { 55 8B EC 83 EC ?? 56 57 8B 7D ?? 8B F7 }
+
+        // Sleep/jitter obfuscation pattern with jump
+        $sleep_mask = { FC 48 83 E4 F0 E8 [4-8] 41 51 41 50 52 51 }
+
+        // XOR decryption loop variant
+        $xor_loop = { 8B ?? 30 ?? 40 3B ?? 75 F? }
+
+        // Stageless config block (alternatives)
+        $cfg_block = { ( 69 68 69 68 | 2E 2E 2E 2E ) 00 00 00 00 }
+
+        // Negated null byte (any non-zero byte at position)
+        $not_null = { 4D 5A ~00 90 00 }
+
+        // Private string (not counted in any of them)
+        $internal = "ReflectiveLoader" ascii private
+
+        // Regex: C2 URL pattern
+        $c2_url = /https?:\/\/[a-z0-9\-]+\.[a-z]{2,6}\/[a-zA-Z0-9]{4,12}\.(jpg|png|gif)/i
+
+        // Regex: named pipe pattern used by Cobalt Strike
+        $named_pipe = /\\\\\.\\pipe\\[a-zA-Z0-9]{4,20}/
+
+    condition:
+        $mz at 0 and
+        filesize < 10MB and
+        pe.number_of_sections > 2 and
+        pe.characteristics & pe.DLL == 0 and
+        (
+            $cfg_magic or
+            ($refl_loader and $sleep_mask) or
+            ($xor_loop and $cfg_block) or
+            $not_null
+        ) and
+        not $c2_url
+}
+
+// ── String modifiers ──────────────────────────────────────────────────────────
+rule Ransomware_String_Patterns : ransomware
+{
+    meta:
+        description = "Generic ransomware string indicators"
         score = 75
 
     strings:
-        $text1 = "This is a test string"
-        $text2 = "Another string with escapes: \t\n\r\\\""
-        $text3 = "Hex escape: \x4D\x5A"
+        $note_wide      = "YOUR FILES HAVE BEEN ENCRYPTED" wide
+        $note_ascii     = "send bitcoin" ascii
+        $note_nocase    = "Recovery Instructions" nocase
+        $ext_full       = ".locked" fullword
+        $key_xor        = "AES-256-CBC" xor
+        $key_xor_range  = "ENCRYPTED" xor(0x01-0xff)
+        $b64_ransom     = "bitcoin" base64
+        $b64w_ransom    = "wallet" base64wide
+        $b64_alphabet   = "data" base64("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/")
+        $combo          = "shadow" wide ascii nocase fullword
 
     condition:
-        any of them
+        4 of them
 }
 
-// String modifiers
-rule StringModifiers
+// ── Global and private rule modifiers ────────────────────────────────────────
+global rule File_Size_Gate
 {
-    strings:
-        $wide_str = "Borland" wide
-        $ascii_str = "text" ascii
-        $wide_ascii = "mixed" wide ascii
-        $nocase_str = "foobar" nocase
-        $fullword_str = "domain" fullword
-        $xor_str = "This program cannot" xor
-        $xor_range = "encrypted" xor(0x01-0xff)
-        $base64_str = "This program cannot" base64
-        $base64wide_str = "secret" base64wide
-        $base64_custom = "data" base64("!@#$%^&*(){}[].,|ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstu")
-        $combined = "malware" wide ascii nocase fullword
-        $private_str = "hidden" private
-
     condition:
-        any of them
+        filesize < 20MB
 }
 
-// Hexadecimal strings with various features
-rule HexStrings
-{
-    strings:
-        // Basic hex string
-        $hex1 = { E2 34 A1 C8 23 FB }
-
-        // Wild-cards
-        $hex2 = { E2 34 ?? C8 A? FB }
-
-        // Not operator
-        $hex3 = { F4 23 ~00 62 B4 }
-        $hex4 = { F4 23 ~?0 62 B4 }
-
-        // Jumps
-        $hex5 = { F4 23 [4-6] 62 B4 }
-        $hex6 = { FE 39 45 [6] 89 00 }
-        $hex7 = { FE 39 45 [10-] 89 00 }
-        $hex8 = { FE 39 45 [-] 89 00 }
-
-        // Alternatives
-        $hex9 = { F4 23 ( 62 B4 | 56 ) 45 }
-        $hex10 = { F4 23 ( 62 B4 | 56 | 45 ?? 67 ) 45 }
-
-    condition:
-        any of ($hex*)
-}
-
-// Regular expressions
-rule RegexPatterns
-{
-    strings:
-        $re1 = /md5: [0-9a-fA-F]{32}/
-        $re2 = /state: (on|off)/
-        $re3 = /foo/i
-        $re4 = /bar./s
-        $re5 = /baz./is
-        $re6 = /https?:\/\/[^\s]+/
-        $re7 = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/
-
-    condition:
-        any of them
-}
-
-// Global rule
-global rule SizeLimit
+private rule Is_PE_File
 {
     condition:
-        filesize < 2MB
-}
-
-// Private rule
-private rule IsExecutable
-{
-    condition:
-        uint16(0) == 0x5A4D
-}
-
-// Global private rule
-global private rule NotTooLarge
-{
-    condition:
-        filesize < 10MB
-}
-
-// Counting strings and offsets
-rule CountingAndOffsets
-{
-    strings:
-        $a = "dummy1"
-        $b = "dummy2"
-
-    condition:
-        #a == 6 and #b > 10 and
-        $a at 100 and
-        $b in (100..filesize) and
-        @a[1] < 1000 and
-        !a[1] > 5
-}
-
-// Data access functions
-rule DataAccess
-{
-    condition:
-        // MZ signature and PE signature
         uint16(0) == 0x5A4D and
-        uint32(uint32(0x3C)) == 0x00004550 and
-        int8(0) == 0x4D and
-        int16(0) == 0x5A4D and
-        int32(0) != 0 and
-        uint8(0) == 0x4D and
-        int8be(0) == 0x4D and
-        int16be(0) == 0x4D5A and
-        int32be(0) != 0 and
-        uint8be(0) == 0x4D and
-        uint16be(0) == 0x4D5A and
-        uint32be(0) != 0
+        uint32(uint32(0x3C)) == 0x00004550
 }
 
-// Sets of strings and quantifiers
-rule StringSets
+global private rule Max_Size_Strict
 {
+    condition:
+        filesize < 50MB
+}
+
+// ── Data access built-in functions ───────────────────────────────────────────
+rule ELF_Backdoor_Sysrv : elf backdoor
+{
+    meta:
+        description = "Detects Sysrv cryptomining backdoor ELF variant"
+        score = 80
+
     strings:
-        $foo1 = "foo1"
-        $foo2 = "foo2"
-        $foo3 = "foo3"
-        $bar1 = "bar1"
-        $bar2 = "bar2"
+        $str_xmrig = "stratum+tcp://" ascii
+        $str_pool  = "xmrigDaemon" ascii
+        $hex_drop  = { 7F 45 4C 46 02 01 01 00 00 00 00 00 00 00 00 00 }
 
     condition:
-        2 of ($foo*) and
-        all of them and
-        any of ($bar*) and
-        none of ($foo*) or
-        1 of ($*)
+        uint8(0)   == 0x7F and
+        uint8(1)   == 0x45 and
+        uint8(2)   == 0x4C and
+        uint8(3)   == 0x46 and
+        int8(4)    == 0x02 and
+        uint16(0x10) == 0x0002 and
+        uint32(0x14) == 0x00000003 and
+        int16be(0)  == 0x7F45 and
+        int32be(0)  == 0x7F454C46 and
+        uint8be(0)  == 0x7F and
+        uint16be(0) == 0x7F45 and
+        uint32be(0) == 0x7F454C46 and
+        ($str_xmrig or $str_pool or $hex_drop)
 }
 
-// Anonymous strings
-rule AnonymousStrings
+// ── Counting, offsets, and length references ─────────────────────────────────
+rule PowerShell_Dropper_Heuristic : powershell dropper
 {
+    meta:
+        description = "Heuristic detection of PowerShell-based dropper activity"
+        score = 65
+
     strings:
-        $ = "dummy1"
-        $ = "dummy2"
+        $cmd_iex    = "IEX" ascii nocase
+        $cmd_invoke = "Invoke-Expression" nocase
+        $cmd_enc    = "-EncodedCommand" nocase
+        $cmd_bypass = "ExecutionPolicy Bypass" nocase
+        $cmd_hidden = "-WindowStyle Hidden" nocase
+        $url_http   = /https?:\/\/[^\s"']{12,}/
 
     condition:
-        1 of them
+        #cmd_iex >= 2 and
+        #url_http > 0 and
+        @cmd_iex[1] < 0x1000 and
+        !cmd_enc[1] > 5 and
+        $cmd_bypass in (0..512) and
+        (2 of ($cmd*))
 }
 
-// For loops and iterators
-rule ForLoops
+// ── Quantifiers, sets, and wildcards ─────────────────────────────────────────
+rule APT_Lateral_Movement_Tools : apt lateral
 {
+    meta:
+        description = "Detects tooling associated with APT lateral movement"
+        score = 70
+
     strings:
-        $a = "dummy1"
-        $b = "dummy2"
+        $psexec1  = "PsExec" ascii nocase
+        $psexec2  = "\\\\%s\\ADMIN$" ascii
+        $wmi1     = "WMI" ascii
+        $wmi2     = "SELECT * FROM Win32_Process" ascii nocase
+        $smb1     = "\\PIPE\\svcctl" ascii
+        $smb2     = "\\PIPE\\samr" ascii
+        $rdp1     = "mstsc" ascii nocase
+        $rdp2     = "Terminal Server" ascii nocase
 
     condition:
-        for all i in (1,2,3) : ( @a[i] + 10 == @b[i] ) and
-        for all i in (1..#a) : ( @a[i] < 100 ) and
-        for any of ($a,$b) : ( $ at 0 ) and
-        for 2 i in (1..#a) : ( @a[i] < 100 )
+        2 of ($psexec*) or
+        all of ($wmi*) or
+        any of ($smb*) or
+        1 of ($rdp*) or
+        none of ($psexec*) and
+        (3 of them)
 }
 
-// Using PE module
-rule PEModuleExample
+// ── Anonymous strings ─────────────────────────────────────────────────────────
+rule Generic_Webshell : webshell
 {
+    meta:
+        description = "Generic PHP/ASP webshell detection"
+
+    strings:
+        $ = "eval(base64_decode(" ascii nocase
+        $ = "eval(gzinflate(" ascii nocase
+        $ = "eval(str_rot13(" ascii nocase
+        $ = "passthru($_" ascii
+        $ = "shell_exec($_" ascii
+
     condition:
-        pe.entry_point == 0x1000 and
-        pe.number_of_sections > 3 and
-        pe.characteristics & pe.DLL != 0
+        2 of them
 }
 
-// String operators in conditions
-rule StringOperators
+// ── For loops and iterators ───────────────────────────────────────────────────
+rule Multi_Stage_Loader_ForLoop : loader
 {
-    condition:
-        pe.sections[0].name contains ".text" and
-        pe.sections[0].name icontains ".TEXT" and
-        pe.sections[0].name startswith "." and
-        pe.sections[0].name istartswith "." and
-        pe.sections[0].name endswith "ext" and
-        pe.sections[0].name iendswith "EXT" and
-        pe.sections[0].name iequals ".TEXT" and
-        pe.sections[0].name matches /\.[a-z]+/
-}
+    meta:
+        description = "Uses for-loops to detect multi-stage loader offsets"
+        score = 60
 
-// Iterating over module data
-rule ModuleIteration
-{
+    strings:
+        $stage_marker = { DE AD BE EF }
+        $stage_end    = { CA FE BA BE }
+
     condition:
-        for any section in pe.sections : (
-            section.name == ".text" and
-            section.characteristics & 0x20000000 != 0
+        for all i in (1..#stage_marker) : (
+            @stage_marker[i] < 0x1000
+        ) and
+        for any i in (1..#stage_end) : (
+            @stage_end[i] > 0x400
+        ) and
+        for 2 i in (1,2,3) : (
+            @stage_marker[i] + 16 == @stage_end[i]
+        ) and
+        for any s in ("deadbeef", "cafebabe") : (
+            hash.md5(0, 4) == s
         )
 }
 
-// Using defined operator
-rule DefinedExample
+// ── Arithmetic, bitwise and string operators ──────────────────────────────────
+rule PE_Suspicious_Characteristics : pe suspicious
 {
-    condition:
-        defined pe.entry_point and
-        pe.entry_point == 0x1000
-}
+    meta:
+        description = "Suspicious PE file with unusual section/import characteristics"
+        score = 55
 
-// Arithmetic and bitwise operators
-rule Operators
-{
     strings:
-        $a = "test"
+        $str_virt  = "VirtualAlloc" ascii
+        $str_write = "WriteProcessMemory" ascii
 
     condition:
-        #a > 5 + 3 and
-        #a < 100 - 50 and
-        #a != 10 * 2 and
-        filesize \ 1024 < 100 and
+        Is_PE_File and
+        pe.number_of_sections > 5 + 2 and
+        pe.number_of_sections < 20 - 2 and
+        filesize > 1024 * 4 and
         filesize % 512 == 0 and
-        uint8(0) & 0xFF == 0x4D and
-        uint8(0) | 0x00 == 0x4D and
-        uint8(0) ^ 0x00 == 0x4D and
-        ~uint8(0) != 0 and
-        uint8(0) << 8 == 0x4D00 and
-        uint16(0) >> 8 == 0x4D
+        (pe.characteristics & pe.EXECUTABLE_IMAGE) != 0 and
+        (pe.characteristics & pe.DLL) == 0 and
+        (pe.characteristics | 0x0002) == pe.characteristics and
+        (pe.opthdr_magic ^ 0x010B) == 0 and
+        ~pe.characteristics == 0xFFFF7FFF and
+        pe.entry_point << 0 == pe.entry_point and
+        pe.entry_point >> 0 == pe.entry_point and
+        2 of ($str*)
 }
 
-// Rule references
-rule Rule1
+// ── String comparison operators ───────────────────────────────────────────────
+rule PE_Section_Name_Checks : pe packer
 {
-    strings:
-        $a = "dummy1"
+    meta:
+        description = "Detects common packer section names in PE files"
+        score = 50
 
     condition:
-        $a
-}
-
-rule Rule2
-{
-    strings:
-        $a = "dummy2"
-
-    condition:
-        $a and Rule1
-}
-
-rule MainRule
-{
-    condition:
-        any of (Rule*)
-}
-
-// Ranges in string sets
-rule RangesInSets
-{
-    strings:
-        $a1 = "test1"
-        $a2 = "test2"
-        $b1 = "other"
-
-    condition:
-        all of ($a*) in (filesize-500..filesize) and
-        any of ($a*, $b*) in (1000..2000) and
-        any of ($a*) at 0 and
-        #a1 in (filesize-500..filesize) == 2
-}
-
-// Hash module usage
-rule HashExample
-{
-    condition:
-        hash.md5(0, filesize) == "d41d8cd98f00b204e9800998ecf8427e" and
-        hash.sha256(0, filesize) != ""
-}
-
-// Math module usage
-rule MathExample
-{
-    condition:
-        math.entropy(0, filesize) > 7.0
-}
-
-// For loop with text strings (YARA 4.3+)
-rule ForWithStrings
-{
-    condition:
-        for any s in ("71b36345516e076a0663e0bea97759e4",
-                       "1e7f7edeb06de02f2c2a9319de99e033") : (
-            hash.md5(0, filesize) == s
+        Is_PE_File and
+        for any section in pe.sections : (
+            section.name contains "UPX" or
+            section.name icontains "upx" or
+            section.name startswith ".aspack" or
+            section.name istartswith ".ASP" or
+            section.name endswith "0" or
+            section.name iendswith "PACK" or
+            section.name iequals ".text" or
+            section.name matches /^\.[a-z]{1,5}[0-9]$/
         )
 }
 
-// Time module
-rule TimeExample
+// ── defined operator ──────────────────────────────────────────────────────────
+rule PE_With_Exports : pe export
 {
+    meta:
+        description = "PE file with suspicious exported function names"
+        score = 60
+
+    condition:
+        Is_PE_File and
+        defined pe.number_of_exports and
+        pe.number_of_exports > 0 and
+        pe.exports("ReflectiveDll_Inject")
+}
+
+// ── PE module usage ───────────────────────────────────────────────────────────
+rule Signed_But_Suspicious_PE : pe signed
+{
+    meta:
+        description = "PE file that is signed but matches suspicious import patterns"
+        score = 65
+
+    strings:
+        $susp_import1 = "CreateRemoteThread" ascii
+        $susp_import2 = "NtUnmapViewOfSection" ascii
+        $susp_import3 = "ZwWriteVirtualMemory" ascii
+
+    condition:
+        Is_PE_File and
+        pe.is_signed and
+        pe.number_of_signatures >= 1 and
+        pe.imports("kernel32.dll", "VirtualAllocEx") and
+        pe.imports("kernel32.dll", "WriteProcessMemory") and
+        pe.machine == pe.MACHINE_I386 and
+        pe.subsystem == pe.SUBSYSTEM_WINDOWS_GUI and
+        pe.is_32bit() and
+        pe.imphash() != "" and
+        2 of ($susp_import*)
+}
+
+// ── ELF module usage ──────────────────────────────────────────────────────────
+rule ELF_Packed_Binary : elf packer
+{
+    meta:
+        description = "Detects ELF binaries with suspicious packing indicators"
+        score = 55
+
+    strings:
+        $upx_sig = { 55 50 58 21 }
+
+    condition:
+        uint8(0) == 0x7F and
+        elf.machine == elf.EM_X86_64 and
+        elf.type == elf.ET_EXEC and
+        elf.number_of_sections < 4 and
+        for any section in elf.sections : (
+            section.name == "" or
+            section.flags & elf.SHF_EXECINSTR != 0
+        ) and
+        $upx_sig
+}
+
+// ── Hash module usage ─────────────────────────────────────────────────────────
+rule Known_Bad_Hash_Emotet : emotet trojan
+{
+    meta:
+        description = "Matches known Emotet sample by hash"
+        score = 100
+
+    condition:
+        hash.md5(0, filesize) == "5e4b6d8e4a3f9c2b1a7e0d3c6f9b2e5a" or
+        hash.sha1(0, filesize) == "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0" or
+        hash.sha256(0, filesize) == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" or
+        hash.crc32(0, 512) == 0xDEADBEEF or
+        hash.checksum32(0, filesize) > 0x1000000
+}
+
+// ── Math module usage ─────────────────────────────────────────────────────────
+rule High_Entropy_PE_Section : pe entropy packed
+{
+    meta:
+        description = "PE file with a high-entropy section indicating compression or encryption"
+        score = 60
+
+    condition:
+        Is_PE_File and
+        for any section in pe.sections : (
+            math.entropy(section.raw_data_offset, section.raw_data_size) > 7.2
+        ) and
+        math.mean(0, 512) > 100.0 and
+        math.deviation(0, 512, math.MEAN_BYTES) > 64.0 and
+        math.in_range(math.entropy(0, filesize), 6.5, 8.0)
+}
+
+// ── dotnet module usage ───────────────────────────────────────────────────────
+rule DotNet_Loader_Heuristic : dotnet loader
+{
+    meta:
+        description = "Detects .NET loader assemblies with suspicious class/method names"
+        score = 70
+
+    condition:
+        dotnet.is_dotnet and
+        dotnet.number_of_classes > 0 and
+        for any cls in dotnet.classes : (
+            cls.fullname contains "Loader" or
+            cls.fullname contains "Injector" or
+            for any method in cls.methods : (
+                method.name contains "Execute" or
+                method.name contains "Inject" or
+                method.name contains "Decrypt"
+            )
+        )
+}
+
+// ── Time module usage ─────────────────────────────────────────────────────────
+rule TimeCheck_Example : timebased
+{
+    meta:
+        description = "Rule that is only valid after a certain date (demonstration)"
+
     condition:
         time.now() > 1704067200
 }
 
-// Complex real-world-like rule
-rule SuspiciousPEFile : malware suspicious
+// ── Console module usage ──────────────────────────────────────────────────────
+rule Debug_Console_Example
 {
     meta:
-        description = "Detects suspicious PE files"
-        author = "Security Analyst"
-        severity = "high"
-        score = 85
-        in_the_wild = true
+        description = "Demonstration of console module debug output"
 
     strings:
         $mz = { 4D 5A }
-        $pe = { 50 45 00 00 }
-        $str1 = "CreateRemoteThread" ascii wide
-        $str2 = "VirtualAllocEx" fullword
-        $str3 = "WriteProcessMemory" nocase
-        $url = /https?:\/\/[a-z0-9\.\-]+\.[a-z]{2,}/i
-        $suspicious_hex = { 68 ?? ?? ?? ?? FF 15 ?? ?? ?? ?? 85 C0 74 [2-6] }
 
     condition:
         $mz at 0 and
-        $pe in (0..1024) and
-        filesize < 5MB and
-        2 of ($str*) and
-        not $url and
+        console.log("Checking PE file") and
+        console.log("Entropy:", math.entropy(0, filesize)) and
+        console.hex("First bytes:", uint32(0))
+}
+
+// ── String module usage ───────────────────────────────────────────────────────
+rule String_Module_Example : string
+{
+    meta:
+        description = "Demonstrates string module functions"
+
+    condition:
+        string.length("hello world") == 11 and
+        string.to_int("1337") == 1337 and
+        string.to_int("0xff", 16) == 255
+}
+
+// ── Cuckoo module usage ───────────────────────────────────────────────────────
+rule Cuckoo_Suspicious_Activity : cuckoo behavioral
+{
+    meta:
+        description = "Detects suspicious behavioral patterns from Cuckoo sandbox analysis"
+        score = 75
+
+    condition:
+        cuckoo.network.http_request(/evil\.example\.com\/payload/) and
+        cuckoo.network.dns_lookup(/evil\.example\.com/) and
+        cuckoo.network.tcp(/192\.168\.1\.1/, 4444) and
+        cuckoo.filesystem.file_access(/\\AppData\\Roaming\\[a-z]{8}\.exe/) and
+        cuckoo.registry.key_access(/HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run/) and
+        cuckoo.sync.mutex(/Global\\[A-F0-9]{32}/)
+}
+
+// ── Magic module usage ────────────────────────────────────────────────────────
+rule Magic_PDF_Dropper : pdf dropper
+{
+    meta:
+        description = "Detects PDF files with embedded executable content"
+        score = 70
+
+    strings:
+        $pdf_js    = "/JavaScript" ascii
+        $pdf_aa    = "/AA" ascii
+        $pdf_embed = "/EmbeddedFile" ascii
+
+    condition:
+        magic.mime_type() == "application/pdf" and
+        magic.type() contains "PDF document" and
+        2 of ($pdf*)
+}
+
+// ── LNK module usage ──────────────────────────────────────────────────────────
+rule Malicious_LNK_Phishing : lnk phishing
+{
+    meta:
+        description = "Detects malicious LNK files used in phishing campaigns"
+        score = 80
+
+    condition:
+        lnk.is_lnk and
+        lnk.file_size < 1MB and
+        lnk.link_info.has_volume_id and
         (
-            pe.entry_point < 0x1000 or
-            pe.number_of_sections > 7 or
-            for any section in pe.sections : (
-                section.name == ".packed" or
-                math.entropy(section.raw_data_offset, section.raw_data_size) > 7.5
-            )
-        )
+            lnk.command_line_arguments contains "powershell" or
+            lnk.command_line_arguments contains "cmd.exe" or
+            lnk.command_line_arguments contains "mshta"
+        ) and
+        (lnk.flags & lnk.HAS_ARGUMENTS) != 0
+}
+
+// ── Ranges in string sets ─────────────────────────────────────────────────────
+rule Process_Injection_Sequence : injection
+{
+    meta:
+        description = "Detects classic process injection API sequence indicators"
+        score = 80
+
+    strings:
+        $api1 = "OpenProcess" ascii fullword
+        $api2 = "VirtualAllocEx" ascii fullword
+        $api3 = "WriteProcessMemory" ascii fullword
+        $api4 = "CreateRemoteThread" ascii fullword
+        $api5 = "NtCreateThreadEx" ascii fullword
+        $api6 = "RtlCreateUserThread" ascii fullword
+        $alt1 = "VirtualAlloc" ascii fullword
+        $alt2 = "LoadLibraryA" ascii fullword
+
+    condition:
+        Is_PE_File and
+        all of ($api1, $api2, $api3) in (0..filesize) and
+        any of ($api4, $api5, $api6) in (0..filesize) and
+        #api1 in (filesize-0x10000..filesize) == 0 and
+        any of ($alt*) at 0
+}
+
+// ── Rule references ───────────────────────────────────────────────────────────
+rule Loader_Stage_One : loader stage1
+{
+    meta:
+        description = "First stage loader: drops and executes a second payload"
+        score = 55
+
+    strings:
+        $dropper_path = "%TEMP%\\" ascii
+        $exec_cmd     = "CreateProcess" ascii fullword
+
+    condition:
+        Is_PE_File and
+        $dropper_path and $exec_cmd
+}
+
+rule Loader_Stage_Two : loader stage2
+{
+    meta:
+        description = "Second stage loader that injects into a target process"
+        score = 75
+
+    strings:
+        $inject_api = "WriteProcessMemory" ascii fullword
+        $alloc_api  = "VirtualAllocEx" ascii fullword
+
+    condition:
+        Is_PE_File and
+        $inject_api and $alloc_api
+}
+
+rule Full_Infection_Chain : loader campaign
+{
+    meta:
+        description = "Matches a complete two-stage infection chain"
+        score = 90
+
+    condition:
+        Loader_Stage_One and Loader_Stage_Two
+}
+
+// ── Complex real-world rule ───────────────────────────────────────────────────
+rule BlackEnergy_Driver : apt rootkit blackenergy
+{
+    meta:
+        description = "Detects BlackEnergy v3 kernel driver component"
+        author = "APT Hunting Team"
+        reference = "https://securelist.com/be2-custom-plugins-router-abuse-and-target-profiles"
+        md5 = "b24c80c2e0c2b741ea4db8c7b5e79ad9"
+        score = 95
+        in_the_wild = true
+
+    strings:
+        // Driver device name
+        $dev_name = "\\Device\\BlackEnergy" wide
+
+        // IOCTL dispatch signature
+        $ioctl_sig = { 8B FF 55 8B EC 8B 45 0C 83 E8 04 74 ?? 83 E8 04 74 ?? }
+
+        // Driver entry point pattern
+        $drv_entry = { 8D 4D F8 51 FF 15 ?? ?? ?? ?? 8B E5 5D C2 08 00 }
+
+        // Encrypted config blob
+        $enc_cfg = { 48 00 [2] 00 [2] 00 [2] 00 ?? ?? 00 00 }
+
+        // PDB path artifact
+        $pdb_path = "blackenergy" nocase
+
+    condition:
+        uint16(0) == 0x5A4D and
+        uint32(uint32(0x3C)) == 0x00004550 and
+        filesize < 512KB and
+        pe.characteristics & pe.SYSTEM != 0 and
+        (
+            ($dev_name and $ioctl_sig) or
+            ($drv_entry and $enc_cfg) or
+            ($pdb_path and $ioctl_sig)
+        ) and
+        pe.imphash() != "" and
+        math.entropy(0, filesize) > 5.0
 }

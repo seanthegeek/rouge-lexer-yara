@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:yara.readthedocs.io)",
+      "Bash(bundle exec:*)",
+      "Bash(curl -s http://localhost:9292)"
+    ]
+  }
+}

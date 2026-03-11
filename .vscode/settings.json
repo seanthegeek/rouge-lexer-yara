@@ -1,5 +1,25 @@
 {
+    "markdownlint.config": {
+        "MD024": {
+            "siblings_only": true
+        }
+    },
     "cSpell.words": [
+        "blackenergy",
+        "Emotet",
+        "endswith",
+        "filesize",
+        "fullword",
+        "icontains",
+        "iendswith",
+        "iequals",
+        "imphash",
+        "istartswith",
+        "Mirai",
+        "nocase",
+        "psexec",
+        "startswith",
+        "webshell",
         "Whalen",
         "YARA"
     ]
